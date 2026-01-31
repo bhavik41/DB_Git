@@ -1,0 +1,29 @@
+{
+  "name": "dbv-git-control-bhavik",
+  "version": "1.0.1",
+  "description": "",
+  "main": "index.js",
+  "bin": {
+    "dbv": "bin/dbv.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.13.5",
+    "chalk": "^4.1.2",
+    "commander": "^14.0.3",
+    "dotenv": "^17.2.4",
+    "figlet": "^1.10.0",
+    "inquirer": "^13.2.2",
+    "listr2": "^10.1.0",
+    "open": "^11.0.0",
+    "pg": "^8.18.0",
+    "readline-sync": "^1.4.10",
+    "table": "^6.9.0"
+  }
+}
