@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int       @id @default(autoincrement())
+  username  String    @unique
+  email     String    @unique
+  githubId  String?   @unique
+  password  String? // Optional for OAuth users
+  projects  Project[]
+  createdAt DateTime  @default(now())
+}
+
+model Project {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  commits     Commit[]
+  branches    Branch[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Branch {
+  id           Int      @id @default(autoincrement())
+  name         String
+  projectId    Int
+  project      Project  @relation(fields: [projectId], references: [id])
+  headCommitId String?
+  commits      Commit[]
+  createdAt    DateTime @default(now())
+
+  @@unique([projectId, name])
+}
+
+model Commit {
+  id        String   @id @default(uuid())
+  message   String
+  author    String
+  createdAt DateTime @default(now())
+  projectId Int
+  project   Project  @relation(fields: [projectId], references: [id])
+  branchId  Int?
+  branch    Branch?  @relation(fields: [branchId], references: [id])
+
+  snapshot Json // Full Schema Snapshot
+  diff     Json?
+
+  prevCommitId String?
+  prevCommit   Commit?  @relation("CommitHistory", fields: [prevCommitId], references: [id])
+  nextCommits  Commit[] @relation("CommitHistory")
+}
