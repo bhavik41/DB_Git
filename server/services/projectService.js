@@ -28,6 +28,13 @@ class ProjectService {
         return project;
     }
 
+    async getProjectByName(name) {
+        return prisma.project.findUnique({
+            where: { name },
+            include: { branches: true }
+        });
+    }
+
 }
 
 module.exports = new ProjectService();
