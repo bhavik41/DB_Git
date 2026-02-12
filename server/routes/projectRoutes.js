@@ -6,4 +6,10 @@ const projectController = require('../controllers/projectController');
 router.post('/', projectController.createProject);
 router.get('/:name', projectController.getProject);
 
+// Commit Routes
+router.post('/:name/commits', projectController.commit);
+router.get('/:name/commits/latest', projectController.getLatestCommit);
+router.get('/:name/commits/:commitId', projectController.getCommitById);
+
+
 module.exports = router;
