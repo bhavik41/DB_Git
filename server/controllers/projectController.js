@@ -69,6 +69,16 @@ class ProjectController {
         }
     }
 
+    async getLog(req, res) {
+        const { name } = req.params;
+
+        try {
+            const commits = await projectService.getCommitLog(name);
+            res.json({ commits });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    }
 }
 
 module.exports = new ProjectController();

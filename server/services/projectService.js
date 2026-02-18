@@ -97,6 +97,17 @@ class ProjectService {
         return prisma.commit.findUnique({ where: { id: branch.headCommitId } });
     }
 
+    async getCommitLog(projectName, limit = 20) {
+        const project = await prisma.project.findUnique({ where: { name: projectName } });
+        if (!project) throw new Error(`Project "${projectName}" not found`);
+
+        return prisma.commit.findMany({
+            where: { projectId: project.id },
+            orderBy: { createdAt: 'desc' },
+            take: limit
+        });
+    }
+
     async getCommitById(projectName, commitId) {
         const project = await prisma.project.findUnique({ where: { name: projectName } });
         if (!project) throw new Error(`Project "${projectName}" not found`);
@@ -108,7 +119,6 @@ class ProjectService {
             }
         });
     }
-
 
 }
 
