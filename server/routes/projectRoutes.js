@@ -10,6 +10,7 @@ router.get('/:name', projectController.getProject);
 router.post('/:name/commits', projectController.commit);
 router.get('/:name/commits/latest', projectController.getLatestCommit);
 router.get('/:name/commits/:commitId', projectController.getCommitById);
+router.post('/:name/rollback/:commitId', projectController.rollback);
 
 // History/Log Routes
 router.get('/:name/log', projectController.getLog);

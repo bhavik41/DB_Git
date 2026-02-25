@@ -120,6 +120,84 @@ class ProjectService {
         });
     }
 
+    async rollbackProject(projectName, commitId) {
+        console.log('🔍 Rolling back:', projectName, 'to commit:', commitId);
+
+        const project = await prisma.project.findUnique({ where: { name: projectName } });
+        if (!project) throw new Error(`Project "${projectName}" not found`);
+
+        if (!project.targetDbUrl) {
+            throw new Error(`No target DB URL configured for "${projectName}". Re-run "dbv init" with the -d flag.`);
+        }
+
+        // Support short commit IDs
+        const commit = await prisma.commit.findFirst({
+            where: { id: { startsWith: commitId } }
+        });
+        if (!commit) throw new Error(`Commit "${commitId}" not found`);
+
+        const snapshot = commit.snapshot;
+        if (!snapshot || !snapshot.tables) {
+            throw new Error('Commit snapshot is empty or malformed');
+        }
+
+        const client = new Client({ connectionString: project.targetDbUrl });
+        await client.connect();
+        console.log('✅ Connected to target DB');
+
+        try {
+            await client.query('BEGIN');
+
+            // Drop all existing public tables
+            const { rows: existingTables } = await client.query(`
+                SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+            `);
+            for (const { tablename } of existingTables) {
+                await client.query(`DROP TABLE IF EXISTS "${tablename}" CASCADE`);
+            }
+
+            // Recreate tables from snapshot
+            for (const [tableName, tableDef] of Object.entries(snapshot.tables)) {
+                if (tableName === '_prisma_migrations') continue;
+
+                if (!tableDef.columns || Object.keys(tableDef.columns).length === 0) {
+                    console.warn(`⚠️  Skipping table "${tableName}" — no columns in snapshot`);
+                    continue;
+                }
+
+                const columns = Object.entries(tableDef.columns)
+                    .map(([colName, colDef]) => `"${colName}" ${colDef.type}`)
+                    .join(', ');
+
+                console.log(`📋 Creating table: ${tableName}`);
+                await client.query(`CREATE TABLE "${tableName}" (${columns})`);
+
+                // Restore rows if snapshot includes data
+                if (tableDef.rows && tableDef.rows.length > 0) {
+                    for (const row of tableDef.rows) {
+                        const cols = Object.keys(row).map(c => `"${c}"`).join(', ');
+                        const vals = Object.values(row).map((_, i) => `$${i + 1}`).join(', ');
+                        const values = Object.values(row);
+                        await client.query(
+                            `INSERT INTO "${tableName}" (${cols}) VALUES (${vals})`,
+                            values
+                        );
+                    }
+                    console.log(`📥 Restored ${tableDef.rows.length} rows into "${tableName}"`);
+                }
+            }
+
+            await client.query('COMMIT');
+            console.log('✅ Rollback committed successfully');
+
+        } catch (err) {
+            await client.query('ROLLBACK');
+            console.error('❌ Rollback failed, transaction rolled back:', err.message);
+            throw err;
+        } finally {
+            await client.end();
+        }
+    }
 }
 
 module.exports = new ProjectService();

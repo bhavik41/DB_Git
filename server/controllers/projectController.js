@@ -79,6 +79,17 @@ class ProjectController {
             res.status(500).json({ error: error.message });
         }
     }
+
+    async rollback(req, res) {
+        try {
+            const { name, commitId } = req.params;
+            await projectService.rollbackProject(name, commitId);
+            res.json({ message: 'Rollback successful' });
+        } catch (error) {
+            console.error('Rollback error:', error);
+            res.status(500).json({ error: error.message, stack: error.stack });
+        }
+    }
 }
 
 module.exports = new ProjectController();
