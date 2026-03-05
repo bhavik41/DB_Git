@@ -71,12 +71,13 @@ class ProjectController {
 
     async getLog(req, res) {
         const { name } = req.params;
+        const { branch } = req.query;
 
         try {
-            const commits = await projectService.getCommitLog(name);
+            const commits = await projectService.getCommitLog(name, branch);
             res.json({ commits });
         } catch (error) {
-            res.status(500).json({ error: error.message });
+            res.status(500).json({ success: false, error: error.message });
         }
     }
 
@@ -88,6 +89,27 @@ class ProjectController {
         } catch (error) {
             console.error('Rollback error:', error);
             res.status(500).json({ error: error.message, stack: error.stack });
+        }
+    }
+
+    async createBranch(req, res) {
+        const { name } = req.params;
+        const { branchName, startCommitId } = req.body;
+        try {
+            const branch = await projectService.createBranch(name, branchName, startCommitId);
+            res.status(201).json({ success: true, branch });
+        } catch (error) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    }
+
+    async getBranches(req, res) {
+        const { name } = req.params;
+        try {
+            const branches = await projectService.listBranches(name);
+            res.json({ success: true, branches });
+        } catch (error) {
+            res.status(500).json({ success: false, error: error.message });
         }
     }
 }

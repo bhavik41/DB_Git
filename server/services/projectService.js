@@ -58,18 +58,26 @@ class ProjectService {
         const project = await prisma.project.findUnique({ where: { name: projectName } });
         if (!project) throw new Error(`Project "${projectName}" not found`);
 
-        const branch = await prisma.branch.upsert({
-            where: { projectId_name: { projectId: project.id, name: branchName || 'main' } },
-            update: {},
-            create: { name: branchName || 'main', projectId: project.id }
+        const branch = await prisma.branch.findUnique({
+            where: { projectId_name: { projectId: project.id, name: branchName || 'main' } }
         });
+
+        if (!branch) {
+            throw new Error(`Branch "${branchName || 'main'}" not found in project "${projectName}"`);
+        }
+
+        // Merge-safety check: if prevCommitId is provided, it MUST match the current branch head.
+        // This prevents "lost updates" if multiple people are committing to the same branch.
+        if (prevCommitId && branch.headCommitId && prevCommitId !== branch.headCommitId) {
+            throw new Error(`Branch "${branchName}" has diverged. Current head is [${branch.headCommitId.substring(0, 8)}], but your commit parent is [${prevCommitId.substring(0, 8)}]. Please pull latest changes before committing.`);
+        }
 
         const commit = await prisma.commit.create({
             data: {
                 message,
                 author,
                 snapshot,
-                diff,
+                diff: diff || [],
                 projectId: project.id,
                 branchId: branch.id,
                 prevCommitId: prevCommitId || branch.headCommitId || null
@@ -82,6 +90,53 @@ class ProjectService {
         });
 
         return commit;
+    }
+
+    async createBranch(projectName, branchName, startCommitId) {
+        const project = await prisma.project.findUnique({ where: { name: projectName } });
+        if (!project) throw new Error(`Project "${projectName}" not found`);
+
+        const existingBranch = await prisma.branch.findUnique({
+            where: { projectId_name: { projectId: project.id, name: branchName } }
+        });
+
+        if (existingBranch) {
+            throw new Error(`Branch "${branchName}" already exists`);
+        }
+
+        // If no startCommitId provided, use the head of 'main'
+        let headId = startCommitId;
+        if (!headId) {
+            const mainBranch = await prisma.branch.findUnique({
+                where: { projectId_name: { projectId: project.id, name: 'main' } }
+            });
+            headId = mainBranch ? mainBranch.headCommitId : null;
+        }
+
+        const branch = await prisma.branch.create({
+            data: {
+                name: branchName,
+                projectId: project.id,
+                headCommitId: headId
+            }
+        });
+
+        return branch;
+    }
+
+    async listBranches(projectName) {
+        const project = await prisma.project.findUnique({ where: { name: projectName } });
+        if (!project) throw new Error(`Project "${projectName}" not found`);
+
+        return prisma.branch.findMany({
+            where: { projectId: project.id },
+            include: {
+                commits: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1
+                }
+            }
+        });
     }
 
     async getLatestCommit(projectName, branchName = 'main') {
@@ -97,12 +152,21 @@ class ProjectService {
         return prisma.commit.findUnique({ where: { id: branch.headCommitId } });
     }
 
-    async getCommitLog(projectName, limit = 20) {
+    async getCommitLog(projectName, branchName = 'main', limit = 20) {
         const project = await prisma.project.findUnique({ where: { name: projectName } });
         if (!project) throw new Error(`Project "${projectName}" not found`);
 
+        const branch = await prisma.branch.findUnique({
+            where: { projectId_name: { projectId: project.id, name: branchName } }
+        });
+
+        const where = { projectId: project.id };
+        if (branch) {
+            where.branchId = branch.id;
+        }
+
         return prisma.commit.findMany({
-            where: { projectId: project.id },
+            where,
             orderBy: { createdAt: 'desc' },
             take: limit
         });

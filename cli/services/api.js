@@ -41,9 +41,11 @@ class ApiService {
         return this.client.post(`/projects/${projectName}/commits`, payload);
     }
 
-    async getLog(projectName) {
+    async getLog(projectName, branch = 'main') {
         await this.init();
-        return this.client.get(`/projects/${projectName}/log`);
+        return this.client.get(`/projects/${projectName}/log`, {
+            params: { branch }
+        });
     }
 
     async getCommit(projectName, commitId) {
@@ -64,6 +66,16 @@ class ApiService {
         }
 
         return this.client.post(`/projects/${projectName}/rollback/${commitId}`);
+    }
+
+    async createBranch(projectName, branchName, startCommitId) {
+        await this.init();
+        return this.client.post(`/projects/${projectName}/branches`, { branchName, startCommitId });
+    }
+
+    async getBranches(projectName) {
+        await this.init();
+        return this.client.get(`/projects/${projectName}/branches`);
     }
 }
 

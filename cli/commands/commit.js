@@ -34,7 +34,7 @@ module.exports = async function commit(options) {
             snapshot: currentSnapshot,
             diff: [], // Diff engine removed as per user request
             prevCommitId,
-            branchName: 'main'
+            branchName: config.currentBranch || 'main'
         });
 
         if (commitRes.data.success) {

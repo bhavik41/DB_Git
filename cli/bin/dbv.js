@@ -8,6 +8,8 @@ const initCommand = require('../commands/init');
 const commitCommand = require('../commands/commit');
 const logCommand = require('../commands/log');
 const loginCommand = require('../commands/login');
+const branchCommand = require('../commands/branch');
+const checkoutCommand = require('../commands/checkout');
 const checkUpdate = require('../utils/updater');
 
 const program = new Command();
@@ -52,6 +54,16 @@ program
     .command('login')
     .description('Login with GitHub')
     .action(loginCommand);
+
+program
+    .command('branch [name]')
+    .description('List or create branches')
+    .action(branchCommand);
+
+program
+    .command('checkout <branch_name>')
+    .description('Switch to a specific branch')
+    .action(checkoutCommand);
 
 program
     .command('rollback <commit_id>')

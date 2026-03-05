@@ -21,6 +21,7 @@ model Project {
   id          Int      @id @default(autoincrement())
   name        String   @unique
   description String?
+  targetDbUrl String?
   userId      Int
   user        User     @relation(fields: [userId], references: [id])
   commits     Commit[]

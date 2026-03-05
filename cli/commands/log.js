@@ -9,7 +9,7 @@ module.exports = async function log() {
     await apiService.init();
 
     try {
-        const response = await apiService.getLog(config.projectName);
+        const response = await apiService.getLog(config.projectName, config.currentBranch || 'main');
         const commits = response.data.commits;
 
         if (commits.length === 0) {
