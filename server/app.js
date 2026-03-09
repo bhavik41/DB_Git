@@ -41,14 +41,7 @@ const authenticate = (req, res, next) => {
 };
 
 // Apply Auth to Projects
-app.use('/projects', (req, res, next) => {
-    // M5 VERIFICATION: Skip auth for analyze routes temporarily
-    if (req.url.includes('/analyze/')) {
-        req.user = { username: 'dev-verify' }; // Mock user for service layer if needed
-        return next();
-    }
-    authenticate(req, res, next);
-}, projectRoutes);
+app.use('/projects', authenticate, projectRoutes);
 
 // Health Check
 app.get('/health', (req, res) => res.json({ status: 'up' }));
