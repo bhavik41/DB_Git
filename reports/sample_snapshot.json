@@ -1,0 +1,94 @@
+{
+    "tables": {
+        "users": {
+            "columns": {
+                "id": {
+                    "type": "integer",
+                    "nullable": false,
+                    "default": "nextval('users_id_seq'::regclass)",
+                    "isPrimaryKey": true
+                },
+                "name": {
+                    "type": "character varying",
+                    "nullable": false,
+                    "default": null,
+                    "isPrimaryKey": false
+                },
+                "email": {
+                    "type": "character varying",
+                    "nullable": false,
+                    "default": null,
+                    "isPrimaryKey": false
+                },
+                "created_at": {
+                    "type": "timestamp without time zone",
+                    "nullable": true,
+                    "default": "now()",
+                    "isPrimaryKey": false
+                }
+            }
+        },
+        "orders": {
+            "columns": {
+                "id": {
+                    "type": "integer",
+                    "nullable": false,
+                    "default": "nextval('orders_id_seq'::regclass)",
+                    "isPrimaryKey": true
+                },
+                "user_id": {
+                    "type": "integer",
+                    "nullable": false,
+                    "default": null,
+                    "isPrimaryKey": false
+                },
+                "total": {
+                    "type": "numeric",
+                    "nullable": true,
+                    "default": "0.00",
+                    "isPrimaryKey": false
+                },
+                "status": {
+                    "type": "character varying",
+                    "nullable": true,
+                    "default": "'pending'",
+                    "isPrimaryKey": false
+                },
+                "created_at": {
+                    "type": "timestamp without time zone",
+                    "nullable": true,
+                    "default": "now()",
+                    "isPrimaryKey": false
+                }
+            }
+        },
+        "products": {
+            "columns": {
+                "id": {
+                    "type": "integer",
+                    "nullable": false,
+                    "default": "nextval('products_id_seq'::regclass)",
+                    "isPrimaryKey": true
+                },
+                "name": {
+                    "type": "character varying",
+                    "nullable": false,
+                    "default": null,
+                    "isPrimaryKey": false
+                },
+                "price": {
+                    "type": "numeric",
+                    "nullable": false,
+                    "default": null,
+                    "isPrimaryKey": false
+                },
+                "stock": {
+                    "type": "integer",
+                    "nullable": true,
+                    "default": "0",
+                    "isPrimaryKey": false
+                }
+            }
+        }
+    }
+}
