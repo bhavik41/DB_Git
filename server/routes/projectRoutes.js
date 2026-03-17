@@ -1,4 +1,5 @@
 const express = require('express');
+const { commitLock, rollbackLock, safeHandler } = require('../middleware/concurrency');
 const router = express.Router();
 const projectController = require('../controllers/projectController');
 
@@ -13,32 +14,10 @@ router.post('/', projectController.createProject);
 router.get('/:name', projectController.getProject);
 
 // Commit Routes
-router.post('/:name/commits', projectController.commit);
+router.post('/:name/commits', commitLock, safeHandler(projectController.commit));
 router.get('/:name/commits/latest', projectController.getLatestCommit);
 router.get('/:name/commits/:commitId', projectController.getCommitById);
-router.post('/:name/rollback/:commitId', projectController.rollback);
-
-// Branch Routes
-router.get('/:name/branches', projectController.getBranches);
-router.post('/:name/branches', projectController.createBranch);
-
-// History/Log Routes
-router.get('/:name/log', projectController.getLog);
-
-module.exports = router;
-const express = require('express');
-const router = express.Router();
-const projectController = require('../controllers/projectController');
-
-// Project Routes
-router.post('/', projectController.createProject);
-router.get('/:name', projectController.getProject);
-
-// Commit Routes
-router.post('/:name/commits', projectController.commit);
-router.get('/:name/commits/latest', projectController.getLatestCommit);
-router.get('/:name/commits/:commitId', projectController.getCommitById);
-router.post('/:name/rollback/:commitId', projectController.rollback);
+router.post('/:name/rollback/:commitId', rollbackLock, safeHandler(projectController.rollback));
 
 // Branch Routes
 router.get('/:name/branches', projectController.getBranches);
