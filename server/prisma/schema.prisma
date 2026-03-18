@@ -12,12 +12,12 @@ model User {
   username  String    @unique
   email     String    @unique
   githubId  String?   @unique
-  password  String? // Optional for OAuth users
+  password  String?
   projects  Project[]
   createdAt DateTime  @default(now())
 
-  @@index([username])       // M5: fast username lookup for auth
-  @@index([email])          // M5: fast email dedup
+  @@index([username])
+  @@index([email])
 }
 
 model Project {
@@ -32,9 +32,9 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@index([userId])         // M5: list all projects for a user efficiently
-  @@index([name])           // M5: project lookup by name (already unique but explicit for query planner)
-  @@index([updatedAt])      // M5: sort by last activity
+  @@index([userId])
+  @@index([name])
+  @@index([updatedAt])
 }
 
 model Branch {
@@ -43,12 +43,13 @@ model Branch {
   projectId    Int
   project      Project  @relation(fields: [projectId], references: [id])
   headCommitId String?
-  commits      Commit[]
+  headCommit   Commit?  @relation("BranchHead", fields: [headCommitId], references: [id])
+  commits      Commit[] @relation("BranchCommits")
   createdAt    DateTime @default(now())
 
   @@unique([projectId, name])
-  @@index([projectId])      // M5: list branches per project
-  @@index([headCommitId])   // M5: fast branch-head resolution during checkout/rollback
+  @@index([projectId])
+  @@index([headCommitId])
 }
 
 model Commit {
@@ -59,80 +60,57 @@ model Commit {
   projectId Int
   project   Project  @relation(fields: [projectId], references: [id])
   branchId  Int?
-  branch    Branch?  @relation(fields: [branchId], references: [id])
+  branch    Branch?  @relation("BranchCommits", fields: [branchId], references: [id])
+  branchHead Branch[] @relation("BranchHead")
 
-  snapshot Json // Full Schema Snapshot
+  snapshot Json
   diff     Json?
 
   prevCommitId String?
   prevCommit   Commit?  @relation("CommitHistory", fields: [prevCommitId], references: [id])
   nextCommits  Commit[] @relation("CommitHistory")
 
-  // M5: Performance indexes for commit history, diff retrieval, and version lookup
-  @@index([projectId, branchId, createdAt(sort: Desc)])  // history query: project+branch ordered by time
-  @@index([projectId, createdAt(sort: Desc)])            // cross-branch history / log
-  @@index([prevCommitId])                                // version graph traversal (parent pointer)
-  @@index([author])                                      // filter commits by author
-  @@index([branchId, createdAt(sort: Desc)])             // branch-scoped log
-}
-generator client {
-  provider = "prisma-client-js"
+  @@index([projectId, branchId, createdAt(sort: Desc)])
+  @@index([projectId, createdAt(sort: Desc)])
+  @@index([prevCommitId])
+  @@index([author])
+  @@index([branchId, createdAt(sort: Desc)])
 }
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+// ─────────────────────────────────────────────────────────────────────────────
+// Member 6: Concurrency Control Tables
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Tracks operations currently in-flight.
+/// Written at the START of an atomic operation, deleted at the END.
+/// Any record surviving a server restart = orphaned operation → recoveryService cleans it.
+model CommitInProgress {
+  id          String   @id @default(uuid())
+  projectName String
+  branchName  String
+  author      String
+  pid         Int      // OS process ID of the server handling this operation
+  startedAt   DateTime @default(now())
+
+  @@index([projectName, branchName])  // fast lookup during lock contention checks
+  @@index([startedAt])                // stale detection by age
+  @@index([pid])                      // process-alive checks during recovery
 }
 
-model User {
-  id        Int       @id @default(autoincrement())
-  username  String    @unique
-  email     String    @unique
-  githubId  String?   @unique
-  password  String? // Optional for OAuth users
-  projects  Project[]
-  createdAt DateTime  @default(now())
-}
+/// Permanent audit trail of all failed operations.
+/// Written when a commit/rollback/checkout crashes or is force-cleaned.
+/// Never deleted — provides forensic history for debugging.
+model FailureLog {
+  id          String   @id @default(uuid())
+  operation   String   // 'commit' | 'rollback' | 'checkout' | 'handler_crash'
+  projectName String
+  branchName  String?
+  author      String?
+  error       String   // error message
+  context     Json?    // extra debug info (body, stack, etc.)
+  occurredAt  DateTime @default(now())
 
-model Project {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique
-  description String?
-  targetDbUrl String?
-  userId      Int
-  user        User     @relation(fields: [userId], references: [id])
-  commits     Commit[]
-  branches    Branch[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-model Branch {
-  id           Int      @id @default(autoincrement())
-  name         String
-  projectId    Int
-  project      Project  @relation(fields: [projectId], references: [id])
-  headCommitId String?
-  commits      Commit[]
-  createdAt    DateTime @default(now())
-
-  @@unique([projectId, name])
-}
-
-model Commit {
-  id        String   @id @default(uuid())
-  message   String
-  author    String
-  createdAt DateTime @default(now())
-  projectId Int
-  project   Project  @relation(fields: [projectId], references: [id])
-  branchId  Int?
-  branch    Branch?  @relation(fields: [branchId], references: [id])
-
-  snapshot Json // Full Schema Snapshot
-  diff     Json?
-
-  prevCommitId String?
-  prevCommit   Commit?  @relation("CommitHistory", fields: [prevCommitId], references: [id])
-  nextCommits  Commit[] @relation("CommitHistory")
+  @@index([projectName])
+  @@index([occurredAt(sort: Desc)])
+  @@index([operation])
 }
