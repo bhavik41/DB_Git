@@ -65,6 +65,7 @@ model Commit {
 
   snapshot Json
   diff     Json?
+  dataDump String? @db.Text
 
   prevCommitId String?
   prevCommit   Commit?  @relation("CommitHistory", fields: [prevCommitId], references: [id])

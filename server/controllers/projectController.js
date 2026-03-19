@@ -29,12 +29,17 @@ class ProjectController {
     // Member 6: atomic commit with lock + transaction
     async commit(req, res) {
         const { name } = req.params;
-        const { message, snapshot, diff, prevCommitId, branchName } = req.body;
+        const { message, snapshot, dataDump, diff, prevCommitId, branchName } = req.body;
         const author = req.user.username;
         try {
             const commit = await atomicCommit(name, {
-                message, snapshot, diff, prevCommitId,
-                branchName: branchName || 'main', author
+                message, 
+                snapshot, 
+                dataDump,
+                diff, 
+                prevCommitId,
+                branchName: branchName || 'main', 
+                author
             });
             res.json({ success: true, commitId: commit.id });
         } catch (error) {

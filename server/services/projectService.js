@@ -51,7 +51,7 @@ class ProjectService {
         });
     }
 
-    async createCommit(projectName, { message, snapshot, diff, prevCommitId, branchName, author }) {
+    async createCommit(projectName, { message, snapshot, dataDump, diff, prevCommitId, branchName, author }) {
         const project = await prisma.project.findUnique({ where: { name: projectName } });
         if (!project) throw new Error(`Project "${projectName}" not found`);
 
@@ -75,6 +75,7 @@ class ProjectService {
                 message,
                 author,
                 snapshot,
+                dataDump,
                 diff: diff || [],
                 projectId: project.id,
                 branchId: branch.id,
@@ -199,6 +200,22 @@ class ProjectService {
         const client = new Client({ connectionString: project.targetDbUrl });
         await client.connect();
         console.log('✅ Connected to target DB');
+
+        if (commit.dataDump) {
+            console.log(`[Rollback] Restoring full data snapshot for commit: ${commitId}`);
+            try {
+                await client.query(commit.dataDump);
+                console.log(`[Rollback] Data restore finished for commit: ${commitId}`);
+                return;
+            } catch (error) {
+                const fs = require('fs');
+                fs.writeFileSync('rollback_error.log', `Error: ${error.message}\nStack: ${error.stack}\nSQL: ${commit.dataDump.substring(0, 500)}...`);
+                console.error(`[Rollback Error] Data restore failed: ${error.message}`);
+                throw error;
+            } finally {
+                await client.end();
+            }
+        }
 
         try {
             await client.query('BEGIN');

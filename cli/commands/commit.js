@@ -12,6 +12,7 @@ const chalk = require('chalk');
 const configManager = require('../utils/config');
 const apiService = require('../services/api');
 const { getSchemaSnapshot } = require('../core/introspection');
+const { execSync } = require('child_process');
 
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 2000;
@@ -29,6 +30,19 @@ module.exports = async function commit(options) {
         const latestRes = await apiService.getLatestCommit(config.projectName);
         const prevCommitId = latestRes.data.commit ? latestRes.data.commit.id : null;
 
+        console.log(chalk.blue('📦 Capturing data snapshot via Docker...'));
+        let dataDump = null;
+        try {
+            // For this demo, we assume the target is the docker container 
+            // We extract the DB name from the URL
+            const dbName = config.targetDbUrl.split('/').pop().split('?')[0];
+            dataDump = execSync(`docker exec dbgit-postgres pg_dump -U postgres -d ${dbName} --clean --if-exists --inserts`, { encoding: 'utf8' });
+            dataDump = dataDump.split('\n').filter(line => !line.trim().startsWith('\\')).join('\n');
+        } catch (dumpError) {
+            console.warn(chalk.yellow('⚠️  Warning: Data snapshot failed. Only schema will be preserved.'));
+            console.warn(chalk.dim(dumpError.message));
+        }
+
         let message = options.message;
         if (!message) {
             const answers = await inquirer.prompt([{
@@ -42,6 +56,7 @@ module.exports = async function commit(options) {
 
         console.log(chalk.blue('\n🚀 Pushing snapshot to remote...'));
 
+
         // ── Retry loop for lock contention (Member 6) ─────────────────────────
         let lastError = null;
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -49,6 +64,7 @@ module.exports = async function commit(options) {
                 const commitRes = await apiService.pushCommit(config.projectName, {
                     message,
                     snapshot: currentSnapshot,
+                    dataDump,
                     diff: [],
                     prevCommitId,
                     branchName: config.currentBranch || 'main'
