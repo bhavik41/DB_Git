@@ -7,8 +7,9 @@ const figlet = require('figlet');
 const initCommand = require('../commands/init');
 const commitCommand = require('../commands/commit');
 const logCommand = require('../commands/log');
+const diffCommand = require('../commands/diff');
 const loginCommand = require('../commands/login');
-const checkUpdate = require('../utils/updater');
+// const checkUpdate = require('../utils/updater');
 
 const program = new Command();
 
@@ -40,6 +41,13 @@ program
     .command('log')
     .description('Show commit logs')
     .action(logCommand);
+
+program
+    .command('diff')
+    .description('Show structural differences between commits')
+    .argument('[base]', 'Base commit ID')
+    .argument('[target]', 'Target commit ID (defaults to live DB)')
+    .action(diffCommand);
 
 program
     .command('remote')
@@ -79,7 +87,7 @@ async function main() {
         program.outputHelp();
     }
 
-    await checkUpdate();
+    // await checkUpdate();
 }
 
 main();

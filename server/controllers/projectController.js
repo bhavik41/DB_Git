@@ -27,13 +27,14 @@ class ProjectController {
 
     async commit(req, res) {
         const { name } = req.params;
-        const { message, snapshot, diff, prevCommitId, branchName } = req.body;
+        const { message, snapshot, dataDump, diff, prevCommitId, branchName } = req.body;
         const author = req.user.username;
 
         try {
             const commit = await projectService.createCommit(name, {
                 message,
                 snapshot,
+                dataDump,
                 diff,
                 prevCommitId,
                 branchName,
@@ -77,6 +78,16 @@ class ProjectController {
             res.json({ commits });
         } catch (error) {
             res.status(500).json({ error: error.message });
+        }
+    }
+
+    async rollback(req, res) {
+        const { name, commitId } = req.params;
+        try {
+            await projectService.rollback(name, commitId);
+            res.json({ success: true, message: `Rolled back to commit ${commitId}` });
+        } catch (error) {
+            res.status(500).json({ success: false, error: error.message });
         }
     }
 }
