@@ -83,12 +83,15 @@ class ProjectController {
     }
 
     // Member 6: atomic rollback with in-progress tracking
+    // BUG FIX: added `return` so atomicRollback receives the new rollback commit
+    // back from rollbackProject. Without it, `commit` was always undefined and
+    // commit.id.substring(0, 8) would throw, masking the real result.
     async rollback(req, res) {
         const { name, commitId } = req.params;
         const author = req.user?.username || 'unknown';
         try {
             const commit = await atomicRollback(name, commitId, async (targetCommit) => {
-                await projectService.rollbackProject(name, targetCommit.id);
+                return await projectService.rollbackProject(name, targetCommit.id); // ← fixed: added return
             });
             res.json({ success: true, message: `Rolled back to [${commit.id.substring(0, 8)}]` });
         } catch (error) {

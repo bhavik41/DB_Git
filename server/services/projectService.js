@@ -177,6 +177,11 @@ class ProjectService {
         });
     }
 
+    // ── BUG FIX: rollbackProject now appends a new rollback commit to history
+    // instead of moving HEAD backwards (which orphaned all commits and broke dbv log).
+    //
+    // Before (broken): branch.headCommitId = targetCommitId  ← rewound HEAD, lost history
+    // After  (fixed):  new commit created with target snapshot → branch.headCommitId = newCommit.id
     async rollbackProject(projectName, commitId) {
         console.log('🔍 Rolling back:', projectName, 'to commit:', commitId);
 
@@ -187,84 +192,118 @@ class ProjectService {
             throw new Error(`No target DB URL configured for "${projectName}". Re-run "dbv init" with the -d flag.`);
         }
 
-        const commit = await prisma.commit.findFirst({
+        // Find the target commit we want to restore to
+        const targetCommit = await prisma.commit.findFirst({
             where: { id: { startsWith: commitId } }
         });
-        if (!commit) throw new Error(`Commit "${commitId}" not found`);
+        if (!targetCommit) throw new Error(`Commit "${commitId}" not found`);
 
-        const snapshot = commit.snapshot;
+        const snapshot = targetCommit.snapshot;
         if (!snapshot || !snapshot.tables) {
             throw new Error('Commit snapshot is empty or malformed');
         }
 
+        // ── Step 1: Apply the schema/data restoration to the target DB ──────────
         const client = new Client({ connectionString: project.targetDbUrl });
         await client.connect();
         console.log('✅ Connected to target DB');
 
-        if (commit.dataDump) {
+        if (targetCommit.dataDump) {
             console.log(`[Rollback] Restoring full data snapshot for commit: ${commitId}`);
             try {
-                await client.query(commit.dataDump);
+                await client.query(targetCommit.dataDump);
                 console.log(`[Rollback] Data restore finished for commit: ${commitId}`);
-                return;
             } catch (error) {
                 const fs = require('fs');
-                fs.writeFileSync('rollback_error.log', `Error: ${error.message}\nStack: ${error.stack}\nSQL: ${commit.dataDump.substring(0, 500)}...`);
+                fs.writeFileSync('rollback_error.log', `Error: ${error.message}\nStack: ${error.stack}\nSQL: ${targetCommit.dataDump.substring(0, 500)}...`);
                 console.error(`[Rollback Error] Data restore failed: ${error.message}`);
+                await client.end();
                 throw error;
+            } finally {
+                await client.end();
+            }
+        } else {
+            try {
+                await client.query('BEGIN');
+
+                const { rows: existingTables } = await client.query(
+                    `SELECT tablename FROM pg_tables WHERE schemaname = 'public'`
+                );
+                for (const { tablename } of existingTables) {
+                    await client.query(`DROP TABLE IF EXISTS "${tablename}" CASCADE`);
+                }
+
+                for (const [tableName, tableDef] of Object.entries(snapshot.tables)) {
+                    if (tableName === '_prisma_migrations') continue;
+
+                    if (!tableDef.columns || Object.keys(tableDef.columns).length === 0) {
+                        console.warn(`⚠️  Skipping table "${tableName}" — no columns in snapshot`);
+                        continue;
+                    }
+
+                    const columns = Object.entries(tableDef.columns)
+                        .map(([colName, colDef]) => `"${colName}" ${colDef.type}`)
+                        .join(', ');
+
+                    console.log(`📋 Creating table: ${tableName}`);
+                    await client.query(`CREATE TABLE "${tableName}" (${columns})`);
+
+                    if (tableDef.rows && tableDef.rows.length > 0) {
+                        for (const row of tableDef.rows) {
+                            const cols = Object.keys(row).map(c => `"${c}"`).join(', ');
+                            const vals = Object.values(row).map((_, i) => `$${i + 1}`).join(', ');
+                            await client.query(
+                                `INSERT INTO "${tableName}" (${cols}) VALUES (${vals})`,
+                                Object.values(row)
+                            );
+                        }
+                        console.log(`📥 Restored ${tableDef.rows.length} rows into "${tableName}"`);
+                    }
+                }
+
+                await client.query('COMMIT');
+                console.log('✅ Rollback committed to target DB successfully');
+
+            } catch (err) {
+                await client.query('ROLLBACK');
+                console.error('❌ Rollback failed, transaction rolled back:', err.message);
+                await client.end();
+                throw err;
             } finally {
                 await client.end();
             }
         }
 
-        try {
-            await client.query('BEGIN');
+        // ── Step 2: Append a new rollback commit to the metadata history ────────
+        // This is the fix: instead of moving HEAD backwards (which broke dbv log),
+        // we create a NEW commit that records the rollback event and move HEAD forward to it.
+        const branch = await prisma.branch.findFirst({
+            where: { projectId: project.id, name: 'main' }
+        });
 
-            const { rows: existingTables } = await client.query(
-                `SELECT tablename FROM pg_tables WHERE schemaname = 'public'`
-            );
-            for (const { tablename } of existingTables) {
-                await client.query(`DROP TABLE IF EXISTS "${tablename}" CASCADE`);
+        if (!branch) throw new Error(`Branch "main" not found for project "${projectName}"`);
+
+        const rollbackCommit = await prisma.commit.create({
+            data: {
+                message: `rollback: reverted to [${targetCommit.id.substring(0, 8)}] — "${targetCommit.message}"`,
+                author: 'system',
+                snapshot: targetCommit.snapshot,       // restored schema state
+                dataDump: targetCommit.dataDump || null,
+                diff: [],
+                projectId: project.id,
+                branchId: branch.id,
+                prevCommitId: branch.headCommitId || null  // chains from current HEAD, not the old one
             }
+        });
 
-            for (const [tableName, tableDef] of Object.entries(snapshot.tables)) {
-                if (tableName === '_prisma_migrations') continue;
+        // Move HEAD forward to the new rollback commit (not backward to the old one)
+        await prisma.branch.update({
+            where: { id: branch.id },
+            data: { headCommitId: rollbackCommit.id }
+        });
 
-                if (!tableDef.columns || Object.keys(tableDef.columns).length === 0) {
-                    console.warn(`⚠️  Skipping table "${tableName}" — no columns in snapshot`);
-                    continue;
-                }
-
-                const columns = Object.entries(tableDef.columns)
-                    .map(([colName, colDef]) => `"${colName}" ${colDef.type}`)
-                    .join(', ');
-
-                console.log(`📋 Creating table: ${tableName}`);
-                await client.query(`CREATE TABLE "${tableName}" (${columns})`);
-
-                if (tableDef.rows && tableDef.rows.length > 0) {
-                    for (const row of tableDef.rows) {
-                        const cols = Object.keys(row).map(c => `"${c}"`).join(', ');
-                        const vals = Object.values(row).map((_, i) => `$${i + 1}`).join(', ');
-                        await client.query(
-                            `INSERT INTO "${tableName}" (${cols}) VALUES (${vals})`,
-                            Object.values(row)
-                        );
-                    }
-                    console.log(`📥 Restored ${tableDef.rows.length} rows into "${tableName}"`);
-                }
-            }
-
-            await client.query('COMMIT');
-            console.log('✅ Rollback committed successfully');
-
-        } catch (err) {
-            await client.query('ROLLBACK');
-            console.error('❌ Rollback failed, transaction rolled back:', err.message);
-            throw err;
-        } finally {
-            await client.end();
-        }
+        console.log(`✅ Rollback commit [${rollbackCommit.id.substring(0, 8)}] appended to history`);
+        return rollbackCommit;
     }
 
     // ── M5: Storage Analysis ──────────────────────────────────────────────────

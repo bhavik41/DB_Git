@@ -19,7 +19,11 @@ const { logFailure } = require('../services/transactionService');
  */
 function createLockMiddleware(getBranchName) {
     return async function lockMiddleware(req, res, next) {
-        const projectName = req.params.name || req.params.projectName || req.body.projectName;
+        // BUG FIX: req.body can be undefined for routes that send no body (e.g. rollback).
+        // Defaulting to {} prevents "Cannot read properties of undefined" crashes.
+        const body = req.body || {};
+
+        const projectName = req.params.name || req.params.projectName || body.projectName;
         const branchName = getBranchName(req) || 'main';
 
         if (!projectName) {
@@ -63,14 +67,14 @@ function createLockMiddleware(getBranchName) {
  * Middleware for commit endpoint.
  * Branch comes from request body (CLI sends branchName in JSON).
  */
-const commitLock = createLockMiddleware((req) => req.body.branchName);
+const commitLock = createLockMiddleware((req) => (req.body || {}).branchName);
 
 /**
  * Middleware for rollback endpoint.
  * Branch is resolved inside the service, so we default to 'main' here.
  * The lock still prevents overlapping rollbacks on the project.
  */
-const rollbackLock = createLockMiddleware((req) => req.body.branchName || 'main');
+const rollbackLock = createLockMiddleware((req) => (req.body || {}).branchName || 'main');
 
 /**
  * Error-catching wrapper for controller functions.
@@ -93,7 +97,7 @@ function safeHandler(controllerFn) {
             await logFailure('handler_crash', projectName, branchName, author, err, {
                 method: req.method,
                 path: req.path,
-                body: JSON.stringify(req.body).substring(0, 500),
+                body: JSON.stringify(req.body || {}).substring(0, 500),
             }).catch(() => {}); // never let logging crash the error handler
 
             next(err);
