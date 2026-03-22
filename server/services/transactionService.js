@@ -28,7 +28,7 @@ const prisma = require('../configs/db');
  * If any step fails → Prisma rolls back the entire transaction,
  * and the CommitInProgress record is cleaned up by recoveryService on next start.
  */
-async function atomicCommit(projectName, { message, snapshot, diff, prevCommitId, branchName, author }) {
+async function atomicCommit(projectName, { message, snapshot, dataDump, diff, prevCommitId, branchName, author }) {
     const branch_name = branchName || 'main';
 
     // Prisma interactive transaction with a generous timeout (30s for large schemas)
@@ -69,6 +69,7 @@ async function atomicCommit(projectName, { message, snapshot, diff, prevCommitId
                 message,
                 author: author || 'unknown',
                 snapshot,
+                dataDump, // Member 7 Fix: included dataDump
                 diff: diff || [],
                 projectId: project.id,
                 branchId: branch.id,

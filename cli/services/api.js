@@ -1,5 +1,5 @@
 const axios = require('axios');
-const readline = require('readline-sync');
+// const readline = require('readline-sync'); // Interaction moved to command layer
 const configManager = require('../utils/config');
 
 class ApiService {
@@ -55,42 +55,6 @@ class ApiService {
 
     async rollback(projectName, commitId) {
         await this.init();
-
-        // ── Step 1: Fetch the target commit to check if dataDump exists ──────
-        let targetCommit = null;
-        try {
-            const res = await this.client.get(`/projects/${projectName}/commits/${commitId}`);
-            targetCommit = res.data;
-        } catch (err) {
-            console.log('\x1b[33m⚠️  Warning: Could not verify commit data snapshot status.\x1b[0m');
-        }
-
-        // ── Step 2: Warn user if no dataDump (only schema will be restored) ──
-        const hasDataDump = targetCommit && targetCommit.dataDump;
-
-        console.log('\n\x1b[33m⚠️  WARNING: Rollback is Destructive!\x1b[0m');
-        console.log('\x1b[90m  • All current tables will be DROPPED and recreated from the target commit snapshot.\x1b[0m');
-
-        if (!hasDataDump) {
-            console.log('\x1b[31m  • DATA WILL NOT BE RESTORED: This commit has no data snapshot.\x1b[0m');
-            console.log('\x1b[31m    Your tables will be recreated but will be EMPTY after rollback.\x1b[0m');
-            console.log('\x1b[31m    (Data snapshot was either not captured or failed during this commit)\x1b[0m');
-        } else {
-            console.log('\x1b[32m  • Data snapshot found — records will be restored from this commit.\x1b[0m');
-        }
-
-        console.log('');
-
-        // ── Step 3: Ask for confirmation ─────────────────────────────────────
-        const confirm = readline.question(
-            'This will overwrite your current schema. Continue? (yes/no): '
-        );
-
-        if (confirm !== 'yes') {
-            console.log('Rollback cancelled.');
-            return;
-        }
-
         return this.client.post(`/projects/${projectName}/rollback/${commitId}`);
     }
 

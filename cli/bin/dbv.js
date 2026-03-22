@@ -75,24 +75,13 @@ program
     .description('Switch to a specific branch')
     .action(checkoutCommand);
 
+const rollbackCommand = require('../commands/rollback');
+
 program
     .command('rollback <commit_id>')
     .description('Rollback DB schema to a specific commit')
-    .action(async (commitId) => {
-        try {
-            const configManager = require('../utils/config');
-            configManager.ensureExists();
-            const config = configManager.getConfig();
-
-            const api = require('../services/api');
-            await api.rollback(config.projectName, commitId);
-
-            console.log(chalk.green('✔ Rollback successful'));
-        } catch (error) {
-            console.log(chalk.red('✖ Rollback failed'));
-            console.error(error.message);
-        }
-    });
+    .option('--force', 'Bypass confirmation prompts (destructive)')
+    .action(rollbackCommand);
 
 program
     .command('analyze')

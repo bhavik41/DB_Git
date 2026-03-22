@@ -30,16 +30,31 @@ module.exports = async function commit(options) {
         const latestRes = await apiService.getLatestCommit(config.projectName);
         const prevCommitId = latestRes.data.commit ? latestRes.data.commit.id : null;
 
-        console.log(chalk.blue('📦 Capturing data snapshot via Docker...'));
+        console.log(chalk.blue('📦 Capturing data snapshot via local pg_dump...'));
         let dataDump = null;
         try {
-            // For this demo, we assume the target is the docker container 
-            // We extract the DB name from the URL
-            const dbName = config.targetDbUrl.split('/').pop().split('?')[0];
-            dataDump = execSync(`docker exec dbgit-postgres pg_dump -U postgres -d ${dbName} --clean --if-exists --inserts`, { encoding: 'utf8' });
-            dataDump = dataDump.split('\n').filter(line => !line.trim().startsWith('\\')).join('\n');
+            /** 
+             * Member 7 Update: Remove Docker dependency.
+             * Use local pg_dump with the target configuration URL.
+             */
+            const dbUrl = config.targetDbUrl;
+
+            // Execute pg_dump directly using the connection string.
+            // --clean --if-exists: helps restoration idempotency
+            // --inserts: preferred for cross-version compatibility within our JSON storage
+            dataDump = execSync(`pg_dump "${dbUrl}" --clean --if-exists --inserts`, {
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore'] // avoid leaking password prompts to stdout
+            });
+
+            // Post-processing: remove comments and certain system lines
+            dataDump = dataDump.split('\n')
+                .filter(line => !line.trim().startsWith('--') && !line.trim().startsWith('\\') && line.trim().length > 0)
+                .join('\n');
+
         } catch (dumpError) {
-            console.warn(chalk.yellow('⚠️  Warning: Data snapshot failed. Only schema will be preserved.'));
+            console.warn(chalk.yellow('⚠️  Warning: Local data snapshot failed. Only schema will be preserved.'));
+            console.warn(chalk.dim('Make sure "pg_dump" is installed and in your PATH.'));
             console.warn(chalk.dim(dumpError.message));
         }
 
@@ -55,6 +70,7 @@ module.exports = async function commit(options) {
         }
 
         console.log(chalk.blue('\n🚀 Pushing snapshot to remote...'));
+        console.log(chalk.dim(`  - Data dump size: ${dataDump ? dataDump.length : 0} bytes`));
 
 
         // ── Retry loop for lock contention (Member 6) ─────────────────────────
